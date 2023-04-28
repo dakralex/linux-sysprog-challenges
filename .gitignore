@@ -1,5 +1,8 @@
 uname
+uname-asm
 statx
+statx-asm
 killall
+killall-asm
 tmp.o
 

@@ -1,4 +1,5 @@
 PROGS=uname statx killall
+PROGS_ASM=uname-asm statx-asm killall-asm
 
 # For compiling .S (assembly) files
 AS=gcc
@@ -28,7 +29,7 @@ all: $(PROGS)
 
 %: %.asm
 	$(NYA) $(NYAFLAGS) -o tmp.o $<
-	ld -o $@ tmp.o
+	ld -o $@-asm tmp.o
 	rm tmp.o
 
 %: %.rs
@@ -42,5 +43,6 @@ all: $(PROGS)
 
 clean:
 	rm -rf $(PROGS)
+	rm -rf $(PROGS_ASM)
 
 .PHONY: all clean
