@@ -1,4 +1,4 @@
-PROGS=uname statx killall
+PROGS=uname statx killall ps pstree
 PROGS_ASM=uname-asm statx-asm killall-asm
 
 # For compiling .S (assembly) files

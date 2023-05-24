@@ -1,0 +1,11 @@
+# Schreiben Sie die Antwort für jede der angegebenen
+# Fragen auf die Zeile nach der jeweiligen Frage, die
+# nicht mit einem "#" Symbol beginnt. Schreiben Sie
+# die ganze Antwort in eine Zeile.
+#
+# Welcher Syscall wird verwendet um durch ein Verzeichnis zu iterieren?
+
+# Welche Datei im procfs Ordner eines Prozesses gibt Aufschluss auf die Adressbereiche, die ein Prozess verwendet?
+
+# Was bedeutet der Prozess-Status **D** (englische Bezeichnung aus man ps)?
+
