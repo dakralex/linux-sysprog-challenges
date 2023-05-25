@@ -29,20 +29,27 @@ struct procInfo {
     char **cmdline;
 };
 
-char get_proc_state(pid_t pid) {
+/**
+ * Returns the state indicated by a char defined in `man 5 proc`.
+ */
+void get_proc_state(pid_t pid, char &state) {
     int fd;
     ssize_t nread;
     char buf[BUF_SIZE];
-    char state = '\0';
     char proc_state_path[NAME_LIMIT];
     get_proc_path(pid, "stat", proc_state_path);
 
+    state = '\0';
+
     // Open and read the proc status information
-    if ((fd = open(proc_state_path, O_RDONLY)) == -1) return state;
-    if ((nread = read(fd, buf, BUF_SIZE)) == -1) return state;
+    if ((fd = open(proc_state_path, O_RDONLY)) == -1) return;
+    if ((nread = read(fd, buf, BUF_SIZE)) == -1) return;
+
     buf[nread] = '\0';
 
-    // Extract the information after pid and comm (which is in parentheses)
+    // Extract the state from the buf string, which is in the 3rd place
+    // The string format is: %d (%s) %c [...]
+    // So we need to get the %c which is after a parenthesis
     char *buf_state_start = strrchr(buf, ')');
 
     if (buf_state_start != nullptr) {
@@ -50,8 +57,32 @@ char get_proc_state(pid_t pid) {
     }
 
     close(fd);
+}
 
-    return state;
+/**
+ * Returns the base address which is the first address mapped to the process.
+ */
+unsigned long long get_proc_base_address(pid_t pid) {
+    int fd;
+    ssize_t nread;
+    char buf[BUF_SIZE];
+    char proc_state_path[NAME_LIMIT];
+    get_proc_path(pid, "maps", proc_state_path);
+
+    // Open and read the proc maps information
+    if ((fd = open(proc_state_path, O_RDONLY)) == -1) return 0;
+    if ((nread = read(fd, buf, BUF_SIZE)) == -1) return 0;
+    buf[nread] = '\0';
+
+    // Extract the information after pid and comm (which is in parentheses)
+    char *buf_base_start = buf;
+    char *buf_base_end = strrchr(buf, '-') - 1;
+
+    if (buf_base_end != nullptr) {
+        return strtoull(buf_base_start, &buf_base_end, 10);
+    }
+
+    return 0;
 }
 
 int main() {
@@ -81,10 +112,11 @@ int main() {
             if (procd->d_name[0] < '0' || procd->d_name[0] > '9') break;
 
             info->pid = strtoul(procd->d_name, nullptr, 10);
-            info->state = get_proc_state(info->pid);
+            get_proc_state(info->pid, info->state);
+            info->base_address = get_proc_base_address(info->pid);
             if (info->state == '\0') continue;
 
-            printf("pid: %d, state: %c\n", info->pid, info->state);
+            printf("pid: %d, state: %c, base address: %llu\n", info->pid, info->state, info->base_address);
 
             // increment bpos
             bpos += procd->d_reclen;
