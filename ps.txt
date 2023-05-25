@@ -4,8 +4,8 @@
 # die ganze Antwort in eine Zeile.
 #
 # Welcher Syscall wird verwendet um durch ein Verzeichnis zu iterieren?
-
+getdents
 # Welche Datei im procfs Ordner eines Prozesses gibt Aufschluss auf die Adressbereiche, die ein Prozess verwendet?
-
+/proc/pid/maps
 # Was bedeutet der Prozess-Status **D** (englische Bezeichnung aus man ps)?
-
+Waiting in uninterruptible disk sleep

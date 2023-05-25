@@ -4,5 +4,9 @@ statx
 statx-asm
 killall
 killall-asm
+ps
+ps-asm
+pstree
+pstree-asm
 tmp.o
 
