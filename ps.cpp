@@ -26,7 +26,7 @@ struct procInfo {
     unsigned long long base_address;
     char exe[PATH_LIMIT];
     char cwd[PATH_LIMIT];
-    char **cmdline;
+    char *cmdline[PATH_LIMIT];
 };
 
 /**
@@ -66,23 +66,78 @@ unsigned long long get_proc_base_address(pid_t pid) {
     int fd;
     ssize_t nread;
     char buf[BUF_SIZE];
-    char proc_state_path[NAME_LIMIT];
-    get_proc_path(pid, "maps", proc_state_path);
+    char proc_maps_path[NAME_LIMIT];
+    get_proc_path(pid, "maps", proc_maps_path);
 
     // Open and read the proc maps information
-    if ((fd = open(proc_state_path, O_RDONLY)) == -1) return 0;
+    if ((fd = open(proc_maps_path, O_RDONLY)) == -1) return 0;
     if ((nread = read(fd, buf, BUF_SIZE)) == -1) return 0;
     buf[nread] = '\0';
+
+    close(fd);
 
     // Extract the information after pid and comm (which is in parentheses)
     char *buf_base_start = buf;
     char *buf_base_end = strrchr(buf, '-') - 1;
 
     if (buf_base_end != nullptr) {
-        return strtoull(buf_base_start, &buf_base_end, 10);
+        return strtoull(buf_base_start, &buf_base_end, 16);
     }
 
     return 0;
+}
+
+/*
+ * Returns the path to the executable file the process was started from.
+ */
+void get_proc_exe_path(pid_t pid, char *exe_path) {
+    ssize_t nread;
+    char buf[BUF_SIZE];
+    char proc_exe_path[NAME_LIMIT];
+    get_proc_path(pid, "exe", proc_exe_path);
+
+    if ((nread = readlink(proc_exe_path, buf, BUF_SIZE)) == -1) return;
+    buf[nread] = '\0';
+    strcpy(exe_path, buf);
+}
+
+void get_proc_cwd_path(pid_t pid, char *cwd_path) {
+    ssize_t nread;
+    char buf[BUF_SIZE];
+    char proc_cwd_path[NAME_LIMIT];
+    get_proc_path(pid, "cwd", proc_cwd_path);
+
+    if ((nread = readlink(proc_cwd_path, buf, BUF_SIZE)) == -1) return;
+    buf[nread] = '\0';
+    strcpy(cwd_path, buf);
+}
+
+ssize_t get_proc_cmdline(pid_t pid, char **cmdline) {
+    int fd;
+    ssize_t nread;
+    char buf[BUF_SIZE];
+    char proc_cmdline_path[NAME_LIMIT];
+    get_proc_path(pid, "cmdline", proc_cmdline_path);
+
+    if ((fd = open(proc_cmdline_path, O_RDONLY)) == -1) return -1;
+    if ((nread = read(fd, buf, BUF_SIZE)) == -1) return -1;
+    buf[nread] = '\0';
+
+    close(fd);
+
+    int i = 0;
+    char *cmd_start = buf;
+    char *cmd_end = nullptr;
+
+    while((cmd_end = strchr(cmd_start, ' ')) != nullptr) {
+        *cmd_end = '\0';
+        cmdline[i++] = strdup(cmd_start);
+        cmd_start = cmd_end + 1;
+    }
+
+    cmdline[i++] = strdup(cmd_start);
+
+    return i;
 }
 
 int main() {
@@ -115,8 +170,17 @@ int main() {
             get_proc_state(info->pid, info->state);
             info->base_address = get_proc_base_address(info->pid);
             if (info->state == '\0') continue;
+            get_proc_exe_path(info->pid, info->exe);
+            get_proc_cwd_path(info->pid, info->cwd);
+            int cmdline_count = get_proc_cmdline(info->pid, info->cmdline);
 
-            printf("pid: %d, state: %c, base address: %llu\n", info->pid, info->state, info->base_address);
+            printf("pid: %d, state: %c, base address: %llu, exe: %s, cwd: %s, ", info->pid, info->state, info->base_address, info->exe, info->cwd);
+
+            for (int i = 0; i < cmdline_count; ++i) {
+                printf("%s, ", info->cmdline[i]);
+            }
+
+            printf("\n");
 
             // increment bpos
             bpos += procd->d_reclen;
