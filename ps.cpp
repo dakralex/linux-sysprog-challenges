@@ -63,10 +63,10 @@ std::string get_proc_info_link(pid_t pid, const char name[]) {
 
 struct ProcInfo {
     pid_t pid;
-    char state {'\0'};
-    unsigned long long base_address;
     std::string exe;
     std::string cwd;
+    unsigned long long base_address;
+    char state {'\0'};
     std::vector<std::string> cmdline;
 
     std::string to_json() {
@@ -151,15 +151,21 @@ std::vector<ProcInfo> get_proc_infos() {
 
         // Only process entries that can be parsed as integers
         if (sscanf(entry->d_name, "%d", &info.pid) == 1) {
-            info.state = get_proc_state(info.pid);
-            info.base_address = get_proc_base_address(info.pid);
             info.exe = get_proc_info_link(info.pid, "exe");
+            if (info.exe.empty()) continue;
+
             info.cwd = get_proc_info_link(info.pid, "cwd");
+            if (info.cwd.empty()) continue;
+
+            info.base_address = get_proc_base_address(info.pid);
+            info.state = get_proc_state(info.pid);
             info.cmdline = get_proc_cmdline(info.pid);
 
             proc_infos.push_back(info);
         }
     }
+
+    closedir(dir);
 
     return proc_infos;
 }
