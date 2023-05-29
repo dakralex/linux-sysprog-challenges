@@ -11,7 +11,7 @@ extern "C" {
 #include <sstream>
 #include <iostream>
 
-#define PROCFS_MOUNT        "/proc/"
+#define PROCFS_MOUNT        "/proc"
 #define NAME_LIMIT          256
 #define BUF_SIZE            4096
 #define PATH_LIMIT          4096
@@ -142,32 +142,15 @@ std::vector<std::string> get_proc_cmdline(pid_t pid) {
  */
 std::vector<ProcInfo> get_proc_infos() {
     std::vector<ProcInfo> proc_infos;
-    int fd;
-    char buf[BUF_SIZE];
-    ssize_t nread;
-    ssize_t bpos;
-    dirent64 *procd {nullptr};
-    ProcInfo info {};
+    DIR *dir = opendir(PROCFS_MOUNT);
+    dirent *entry = readdir(dir);
 
-    fd = open(PROCFS_MOUNT, O_RDONLY | O_DIRECTORY);
+    // Go through every directory entry in the procfs
+    while ((entry = readdir(dir)) != nullptr) {
+        ProcInfo info;
 
-    do {
-        nread = getdents64(fd, buf, BUF_SIZE);
-
-        // stop if there is nothing left to read
-        if (nread == 0) break;
-
-        bpos = 0u;
-
-        // go through all directory entries in procfs
-        do {
-            procd = (struct dirent64 *) (buf + bpos);
-
-            // skip any entry that is not a folder with a number as its name
-            if (procd->d_type != DT_DIR) break;
-            if (procd->d_name[0] < '0' || procd->d_name[0] > '9') break;
-
-            info.pid = strtoul(procd->d_name, nullptr, 10);
+        // Only process entries that can be parsed as integers
+        if (sscanf(entry->d_name, "%d", &info.pid) == 1) {
             info.state = get_proc_state(info.pid);
             info.base_address = get_proc_base_address(info.pid);
             info.exe = get_proc_info_link(info.pid, "exe");
@@ -175,13 +158,8 @@ std::vector<ProcInfo> get_proc_infos() {
             info.cmdline = get_proc_cmdline(info.pid);
 
             proc_infos.push_back(info);
-
-            // increment bpos
-            bpos += procd->d_reclen;
-        } while (bpos < nread);
-    } while(nread > 0);
-
-    close(fd);
+        }
+    }
 
     return proc_infos;
 }
