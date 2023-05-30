@@ -1,9 +1,7 @@
 extern "C" {
-    #include <unistd.h>     /* write syscall */
-    #include <fcntl.h>      /* open syscall, AT_ constants */
+    #include <unistd.h>     /* read and readlink syscalls */
+    #include <fcntl.h>      /* open syscall */
     #include <dirent.h>     /* getdents64 syscall */
-    #include <stdlib.h>     /* malloc, free, strtol */
-    #include <stdio.h>      /* snprintf */
 }
 
 #include <string>
@@ -11,10 +9,8 @@ extern "C" {
 #include <sstream>
 #include <iostream>
 
-#define PROCFS_MOUNT        "/proc"
 #define NAME_LIMIT          256
-#define BUF_SIZE            4096
-#define PATH_LIMIT          4096
+#define BUF_SIZE            8192
 
 /**
  * Returns the path for a file under the /proc hierarchy.
@@ -24,7 +20,7 @@ std::string get_proc_path(pid_t pid, const char name[]) {
     ssize_t nput = std::snprintf(buf, NAME_LIMIT, "/proc/%d/%s", pid, name);
     buf[nput] = '\0';
 
-    return buf;
+    return std::string(buf, nput);
 }
 
 /**
@@ -43,7 +39,7 @@ std::string get_proc_info_content(pid_t pid, const char name[]) {
     close(fd);
     buf[nread] = '\0';
 
-    return buf;
+    return std::string(buf, nread);
 }
 
 /**
@@ -74,7 +70,7 @@ struct ProcInfo {
 
         json << "{";
         json << "\"pid\":" << pid << ",";
-        json << "\"exe:\":\"" << exe << "\",";
+        json << "\"exe\":\"" << exe << "\",";
         json << "\"cwd\":\"" << cwd << "\",";
         json << "\"base_address\":" << base_address << ",";
         json << "\"state\":\"" << state << "\",";
@@ -111,13 +107,29 @@ char get_proc_state(pid_t pid) {
 /**
  * Returns the base address which is the first address mapped to the process.
  */
-unsigned long long get_proc_base_address(pid_t pid) {
+unsigned long long get_proc_base_address(pid_t pid, std::string exe) {
     std::string maps_content {get_proc_info_content(pid, "maps")};
+    std::istringstream maps_content_stream (maps_content);
 
-    auto first_address_end = maps_content.find('-') - 1;
-    auto first_address = maps_content.substr(0, first_address_end);
+    std::string line;
+    while (std::getline(maps_content_stream, line)) {
+        std::istringstream linestream (line);
+        std::string address, perms, offset, dev, inode, path;
 
-    return strtoull(first_address.c_str(), nullptr, 16);
+        if (!(linestream >> address >> perms >> offset >> dev >> inode >> path)) {
+            continue;
+        }
+
+        auto offset_num = strtoul(offset.c_str(), nullptr, 16);
+
+        if (path == exe && offset_num == 0) {
+            auto base_address = address.substr(0, address.find('-'));
+
+            return strtoull(base_address.c_str(), nullptr, 16);
+        }
+    }
+
+    return 0;
 }
 
 /**
@@ -127,10 +139,15 @@ std::vector<std::string> get_proc_cmdline(pid_t pid) {
     std::vector<std::string> cmdline_items;
     std::istringstream cmdline_content_stream (get_proc_info_content(pid, "cmdline"));
 
-    std::string tmp;
+    std::string arg;
 
-    while (std::getline(cmdline_content_stream, tmp, ' ')) {
-        cmdline_items.push_back(tmp);
+    while (std::getline(cmdline_content_stream, arg, '\0')) {
+        std::istringstream arg_stream (arg);
+        std::string tmp;
+
+        while (std::getline(arg_stream, tmp, ' ')) {
+            cmdline_items.push_back(arg);
+        }
     }
 
     return cmdline_items;
@@ -142,7 +159,7 @@ std::vector<std::string> get_proc_cmdline(pid_t pid) {
  */
 std::vector<ProcInfo> get_proc_infos() {
     std::vector<ProcInfo> proc_infos;
-    DIR *dir = opendir(PROCFS_MOUNT);
+    DIR *dir = opendir("/proc");
     dirent *entry = readdir(dir);
 
     // Go through every directory entry in the procfs
@@ -157,7 +174,7 @@ std::vector<ProcInfo> get_proc_infos() {
             info.cwd = get_proc_info_link(info.pid, "cwd");
             if (info.cwd.empty()) continue;
 
-            info.base_address = get_proc_base_address(info.pid);
+            info.base_address = get_proc_base_address(info.pid, info.exe);
             info.state = get_proc_state(info.pid);
             info.cmdline = get_proc_cmdline(info.pid);
 
@@ -184,7 +201,7 @@ void print_proc_infos(std::vector<ProcInfo> proc_infos) {
         }
     }
 
-    std::cout << "]";
+    std::cout << "]" << std::endl;
 }
 
 int main() {
