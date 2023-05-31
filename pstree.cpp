@@ -134,21 +134,60 @@ void print_proc_tree(ProcInfoNode root) {
     std::cout << "]" << std::endl;
 }
 
-int main(int argc, const char *argv[]) {
-    pid_t pid = 1;
+std::vector<ProcInfoNode> get_proc_tree_list() {
+    std::vector<ProcInfoNode> proc_tree_list;
+    DIR *dir = opendir("/proc");
+    dirent *entry = readdir(dir);
 
+    // Go through every directory entry in the procfs
+    while ((entry = readdir(dir)) != nullptr) {
+        ProcInfoNode root;
+        pid_t pid;
+
+        // Only process entries that can be parsed as integers
+        if (sscanf(entry->d_name, "%d", &pid) == 1) {
+            ProcInfoNode root {get_proc_tree(pid)};
+
+            proc_tree_list.push_back(root);
+        }
+    }
+
+    closedir(dir);
+
+    return proc_tree_list;
+}
+
+void print_proc_tree_list(std::vector<ProcInfoNode> proc_tree_list) {
+    std::cout << "[";
+
+    for (size_t i {0}; i < proc_tree_list.size(); ++i) {
+        std::cout << proc_tree_list[i].to_json();
+
+        if (i != proc_tree_list.size() - 1) {
+            std::cout << ",";
+        }
+    }
+
+    std::cout << "]" << std::endl;
+}
+
+int main(int argc, const char *argv[]) {
     if (argc > 1) {
-        pid = strtoul(argv[1], nullptr, 10);
+        pid_t pid = strtoul(argv[1], nullptr, 10);
 
         if (!std::filesystem::is_directory("/proc/" + std::to_string(pid))) {
             std::cerr << "There is no process with the pid " << pid << std::endl;
             return -1;
         }
+
+        ProcInfoNode root {get_proc_tree(pid)};
+
+        print_proc_tree(root);
+    } else {
+        std::vector<ProcInfoNode> proc_tree_list {get_proc_tree_list()};
+
+        print_proc_tree_list(proc_tree_list);
     }
-
-    ProcInfoNode root {get_proc_tree(pid)};
-
-    print_proc_tree(root);
 
     return 0;
 }
