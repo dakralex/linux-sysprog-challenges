@@ -16,11 +16,7 @@ extern "C" {
  * Returns the path for a file under the /proc hierarchy.
  */
 std::string get_proc_path(pid_t pid, const char name[]) {
-    char buf[NAME_LIMIT];
-    ssize_t nput = std::snprintf(buf, NAME_LIMIT, "/proc/%d/%s", pid, name);
-    buf[nput] = '\0';
-
-    return std::string(buf, nput);
+    return "/proc/" + std::to_string(pid) + "/" + name;
 }
 
 /**

@@ -4,6 +4,6 @@
 # die ganze Antwort in eine Zeile.
 #
 # Wie wird der Parent-Prozess (fast) aller Prozesse unter Linux üblicherweise genannt?
-
+init systemd
 # Welche PID hat dieser Prozess?
-
+1
