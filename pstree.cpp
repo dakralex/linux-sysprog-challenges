@@ -4,7 +4,6 @@ extern "C" {
     #include <dirent.h>     /* getdents64 syscall */
 }
 
-#include <map>
 #include <string>
 #include <vector>
 #include <sstream>
@@ -17,8 +16,7 @@ extern "C" {
 #define BUF_SIZE            8192
 
 namespace pstree {
-    using children_map = std::map<pid_t, std::vector<pid_t>>;
-    using children_umap = std::unordered_map<pid_t, std::vector<pid_t>>;
+    using children_map = std::unordered_map<pid_t, std::vector<pid_t>>;
 }
 
 void build_proc_path(std::ostringstream &oss) {
@@ -90,7 +88,12 @@ struct ProcInfoNode {
     }
 };
 
-void add_to_children_umap (pstree::children_umap &proc_children, pid_t ppid, pid_t child_pid) {
+/**
+ * Add a children pid to their parent process pid in a unordered hashmap
+ * uniquely, so that they can later be retrieved for getting all children of
+ * a process.
+ */
+void add_to_children_map (pstree::children_map &proc_children, pid_t ppid, pid_t child_pid) {
     auto entry = proc_children.find(ppid);
 
     if (entry != proc_children.end()) {
@@ -109,8 +112,8 @@ void add_to_children_umap (pstree::children_umap &proc_children, pid_t ppid, pid
 /**
  * Returns a hash map that maps the pids of all processes to their parents' pid.
  */
-pstree::children_umap get_all_proc_children() {
-    pstree::children_umap proc_children;
+pstree::children_map get_all_proc_children() {
+    pstree::children_map proc_children;
 
     DIR *dir = opendir("/proc");
     dirent *entry = readdir(dir);
@@ -129,7 +132,8 @@ pstree::children_umap get_all_proc_children() {
             // The parent's pid is in the fourth place of the stat pseudo-file
             stat_content_stream >> tmp >> tmp >> tmp >> ppid;
 
-            add_to_children_umap(proc_children, ppid, pid);
+            // Add children pid to their parent process
+            add_to_children_map(proc_children, ppid, pid);
         }
     }
 
@@ -154,12 +158,13 @@ std::string get_proc_name(pid_t pid) {
  * Returns a ProcInfoNode that goes through the processes' children
  * recursively.
  */
-ProcInfoNode get_proc_tree(pid_t pid, pstree::children_umap proc_children) {
+ProcInfoNode get_proc_tree(pid_t pid, pstree::children_map proc_children) {
     ProcInfoNode parent;
 
     parent.pid = pid;
     parent.name = get_proc_name(pid);
 
+    // Recursively add children nodes
     for (const auto &child_pid : proc_children[pid]) {
         parent.children.push_back(get_proc_tree(child_pid, proc_children));
     }
@@ -167,21 +172,8 @@ ProcInfoNode get_proc_tree(pid_t pid, pstree::children_umap proc_children) {
     return parent;
 }
 
-ProcInfoNode get_proc_tree(pid_t pid, std::vector<pid_t> child_pids) {
-    ProcInfoNode parent;
-
-    parent.pid = pid;
-    parent.name = get_proc_name(pid);
-
-    for (const auto &child_pid : child_pids) {
-        parent.children.push_back(get_proc_tree(child_pid, child_pids));
-    }
-
-    return parent;
-}
-
 /**
- * Prints the given node as a tree as JSON.
+ * Prints the given node as a tree in JSON.
  */
 void print_proc_tree(ProcInfoNode root) {
     std::cout << "[";
@@ -191,40 +183,9 @@ void print_proc_tree(ProcInfoNode root) {
     std::cout << "]" << std::endl;
 }
 
-std::vector<ProcInfoNode> get_proc_tree_list(pstree::children_umap proc_children) {
-    std::vector<ProcInfoNode> proc_tree_list;
-
-    // for (auto &it : proc_children) {
-    //     std::cout << it.first << ": ";
-    //
-    //     for (auto &item : it.second) {
-    //         std::cout << item << ", ";
-    //     }
-    //
-    //     std::cout << std::endl;
-    // }
-
-    // DIR *dir = opendir("/proc");
-    // dirent *entry = readdir(dir);
-    //
-    // // Go through every directory entry in the procfs
-    // while ((entry = readdir(dir)) != nullptr) {
-    //     ProcInfoNode root;
-    //     pid_t pid;
-    //
-    //     // Only process entries that can be parsed as integers
-    //     if (sscanf(entry->d_name, "%d", &pid) == 1) {
-    //         ProcInfoNode root {get_proc_tree(pid)};
-    //
-    //         proc_tree_list.push_back(root);
-    //     }
-    // }
-    //
-    // closedir(dir);
-
-    return proc_tree_list;
-}
-
+/**
+ * Prints the list of given nodes as a list in JSON.
+ */
 void print_proc_tree_list(std::vector<ProcInfoNode> proc_tree_list) {
     std::cout << "[";
 
@@ -243,6 +204,7 @@ int main(int argc, const char *argv[]) {
     auto proc_children = get_all_proc_children();
 
     if (argc > 1) {
+        // If a valid process id is given, output the children of that one
         pid_t pid = strtoul(argv[1], nullptr, 10);
 
         if (!std::filesystem::is_directory("/proc/" + std::to_string(pid))) {
@@ -254,7 +216,8 @@ int main(int argc, const char *argv[]) {
 
         print_proc_tree(root);
     } else {
-        std::vector<ProcInfoNode> proc_tree_list {get_proc_tree_list(proc_children)};
+        // By default, output the children of the parent process #0
+        std::vector<ProcInfoNode> proc_tree_list {get_proc_tree(0, proc_children).children};
 
         print_proc_tree_list(proc_tree_list);
     }
